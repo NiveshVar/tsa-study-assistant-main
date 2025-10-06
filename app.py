@@ -133,4 +133,6 @@ if send and prompt.strip():
             st.session_state.chat.append({"role": "bot", "content": answer, "sources": sources})
         except Exception as e:
             st.session_state.chat.append({"role": "bot", "content": f"Error: {e}"})
-    st.experimental_rerun()
+    st.rerun()
+
+
