@@ -2,7 +2,7 @@ import os
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain.vectorstores import Chroma
+from langchain_chroma import Chroma
 import google.generativeai as genai
 import shutil
 
@@ -29,16 +29,15 @@ class PDFNotesRAG:
                     loader = PyPDFLoader(file_path)
                     pdf_documents = loader.load()
                     
-                    # Add metadata to identify which unit it came from
                     for doc in pdf_documents:
                         doc.metadata['unit'] = filename.replace('.pdf', '')
                         doc.metadata['source'] = filename
                     
                     self.documents.extend(pdf_documents)
-                    print(f"✓ Successfully loaded {filename} ({len(pdf_documents)} pages)")
+                    print(f" Successfully loaded {filename} ({len(pdf_documents)} pages)")
                     
                 except Exception as e:
-                    print(f"✗ Error loading {filename}: {e}")
+                    print(f" Error loading {filename}: {e}")
         
         print(f"\nTotal documents loaded: {len(self.documents)}")
         return self.documents
@@ -55,7 +54,7 @@ class PDFNotesRAG:
         )
         
         self.chunks = text_splitter.split_documents(self.documents)
-        print(f"✓ Created {len(self.chunks)} chunks from {len(self.documents)} pages")
+        print(f" Created {len(self.chunks)} chunks from {len(self.documents)} pages")
         
         return self.chunks
 
@@ -63,14 +62,12 @@ class PDFNotesRAG:
         """Create embeddings and vector store"""
         print("\nSetting up vector store...")
         
-        # Initialize embedding model (local & free)
         self.embeddings = HuggingFaceEmbeddings(
             model_name="sentence-transformers/all-MiniLM-L6-v2",
             model_kwargs={'device': 'cpu'}
         )
-        print("✓ Embedding model loaded")
+        print(" Embedding model loaded")
         
-        # Create or load vector store
         if os.path.exists(self.persist_directory):
             print("Loading existing vector store...")
             self.vector_store = Chroma(
@@ -84,42 +81,38 @@ class PDFNotesRAG:
                 embedding=self.embeddings,
                 persist_directory=self.persist_directory
             )
-            print("✓ Vector store created and persisted")
+            print(" Vector store created and persisted")
         
         return self.vector_store
 
     def setup_gemini_llm(self, api_key):
         """Setup Google Gemini LLM with correct model names"""
         try:
-            # Configure the API directly
             genai.configure(api_key=api_key)
             
-            # Use the latest model name - gemini-2.0-flash is fast and free
             self.genai_model = genai.GenerativeModel('gemini-2.0-flash')
             
-            # Test the connection with a simple prompt
             test_response = self.genai_model.generate_content("Say 'TEST OK' in one word.")
             
             if test_response and test_response.text:
-                print("✓ Google Gemini AI loaded successfully!")
-                print(f"✓ Using model: gemini-2.0-flash")
+                print(" Google Gemini AI loaded successfully!")
+                print(f" Using model: gemini-2.0-flash")
                 return True
             else:
-                print("✗ Test response was empty")
+                print(" Test response was empty")
                 return False
                 
         except Exception as e:
-            print(f"✗ Error setting up Gemini: {e}")
-            # Try fallback model
+            print(f" Error setting up Gemini: {e}")
             try:
                 print("Trying fallback model: gemini-2.0-flash-lite")
                 self.genai_model = genai.GenerativeModel('gemini-2.0-flash-lite')
                 test_response = self.genai_model.generate_content("Test")
                 if test_response.text:
-                    print("✓ Fallback model loaded successfully!")
+                    print(" Fallback model loaded successfully!")
                     return True
             except Exception as e2:
-                print(f"✗ Fallback also failed: {e2}")
+                print(f" Fallback also failed: {e2}")
             
             return False
 
@@ -128,15 +121,12 @@ class PDFNotesRAG:
         if self.vector_store is None:
             return {"error": "Please setup vector store first!"}
         
-        # Retrieve relevant chunks
         retriever = self.vector_store.as_retriever(search_kwargs={"k": k})
         relevant_docs = retriever.invoke(question)
         
-        # Combine context from all relevant chunks
         context = "\n\n".join([doc.page_content for doc in relevant_docs])
         
         if self.genai_model and context.strip():
-            # Create prompt for Gemini
             prompt = f"""You are a helpful study assistant. Answer the question based ONLY on the provided study notes.
 
 STUDY NOTES CONTEXT:
@@ -155,7 +145,6 @@ INSTRUCTIONS:
 ANSWER:"""
             
             try:
-                # Generate answer with Gemini
                 response = self.genai_model.generate_content(prompt)
                 if response and response.text:
                     coherent_answer = response.text
@@ -164,7 +153,6 @@ ANSWER:"""
             except Exception as e:
                 coherent_answer = f"Error generating AI answer: {str(e)}\n\nRelevant context from notes:\n{context}"
         else:
-            # Fallback: simple context combination
             coherent_answer = f"Relevant information from your notes:\n\n{context}"
         
         return {
@@ -173,42 +161,34 @@ ANSWER:"""
             "sources": relevant_docs
         }
 
-# Test the AI connection
 if __name__ == "__main__":
-    # Initialize the system
     rag_system = PDFNotesRAG("./data")
     
-    # Step 1: Load all PDFs
     documents = rag_system.load_pdfs()
     
-    # Step 2: Chunk the documents
     chunks = rag_system.chunk_documents()
     
-    # Step 3: Create vector store
     vector_store = rag_system.setup_vector_store()
     
-    # Step 4: Setup Gemini AI with your API key
     print("\n" + "="*70)
     print("SETTING UP GOOGLE GEMINI AI")
     print("="*70)
     
     api_key = "AIzaSyBpCOIHt6VO-OVj9pN8_PZC6oKtvlE14FI"
     if rag_system.setup_gemini_llm(api_key):
-        print("🎉 AI-powered Q&A ready!")
+        print(" AI-powered Q&A ready!")
         
-        # Test with AI answers
         test_questions = [
             "What is natural language processing?",
             "Explain RNN in simple terms",
         ]
         
         for question in test_questions:
-            print(f"\n🧠 Question: {question}")
+            print(f"\n Question: {question}")
             result = rag_system.ask_question(question)
             if result and "error" not in result:
-                print(f"✅ AI Answer: {result['answer']}")
-                print(f"📚 Sources: Units {list(set([doc.metadata['unit'] for doc in result['sources']]))}")
+                print(f" AI Answer: {result['answer']}")
+                print(f" Sources: Units {list(set([doc.metadata['unit'] for doc in result['sources']]))}")
                 print("="*70)
     else:
-
-        print("❌ AI setup failed. Using retrieval-only mode.")
+        print(" AI setup failed. Using retrieval-only mode.")
